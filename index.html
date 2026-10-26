@@ -1,0 +1,633 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>독도 기상 상황 정보판</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f7fb;color:#182230;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.wrap{max-width:900px;margin:auto;padding:38px 18px 60px}
+h1{margin:0;font-size:32px}
+h1+p{color:#667386;margin:8px 0 24px}
+.card{background:#fff;border:1px solid #dfe5ee;border-radius:18px;padding:24px;margin:16px 0;box-shadow:0 8px 28px #17365d0b}
+button{width:100%;padding:15px;border:0;border-radius:12px;background:#1769e0;color:#fff;font-size:17px;font-weight:800;cursor:pointer}
+button:disabled{opacity:.65;cursor:wait}
+.btn-test{background:#059669;margin-top:10px}
+.btn-retry{background:#d97706;margin-top:12px}
+.status{margin-top:12px;color:#667386;font-size:14px;line-height:1.5}
+.badge{display:inline-block;padding:4px 8px;border-radius:6px;font-size:12px;font-weight:bold;margin-bottom:8px}
+.badge-fresh{background:#dcfce7;color:#15803d}
+.badge-stale{background:#fef3c7;color:#b45309}
+.error-box{margin-top:12px;padding:12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;color:#991b1b;font-size:14px;line-height:1.5}
+.notice-box{margin-top:12px;padding:12px;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;color:#9a3412;font-size:14px;line-height:1.5}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:18px}
+.item{border:1px solid #e1e6ee;border-radius:14px;padding:18px}
+.item span{display:block;color:#667386;font-size:14px}
+.item strong{display:block;font-size:30px;margin-top:6px}
+.meta{line-height:1.8;color:#536174;font-size:14px;margin-top:18px;overflow-wrap:anywhere}
+.compare{margin-top:18px;padding:16px;border-radius:12px;background:#f7f9fc;border:1px solid #e4e8ef;line-height:1.6}
+table{width:100%;border-collapse:collapse;margin-top:12px;font-size:14px}
+th,td{padding:11px;border-bottom:1px solid #e5e9ef;text-align:left}
+th{background:#f8fafc}
+.small{font-size:13px;color:#718096;line-height:1.6}
+.source a{color:#1769e0;font-weight:700}
+.test-log{background:#1e293b;color:#f8fafc;padding:14px;border-radius:10px;font-family:monospace;font-size:13px;white-space:pre-wrap;margin-top:12px}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>독도 기상 상황 정보판</h1>
+  <p>독도의 현재 기상 상황을 실시간으로 조회하고 결과를 로컬에 저장합니다.</p>
+
+  <div class="card">
+    <button id="loadBtn" onclick="loadWeather()">현재 독도 날씨 조회</button>
+    <div id="status" class="status" role="status" aria-live="polite">조회 버튼을 누르면 독도의 현재 날씨를 조회합니다.</div>
+  </div>
+
+  <div id="result" class="card" hidden>
+    <div id="statusBadge"></div>
+    <h2>현재 독도 기상 상황</h2>
+    <div class="grid">
+      <div class="item"><span>기온</span><strong id="temperature">-</strong></div>
+      <div class="item"><span>습도</span><strong id="humidity">-</strong></div>
+      <div class="item"><span>풍속</span><strong id="wind">-</strong></div>
+      <div class="item"><span>풍향</span><strong id="direction">-</strong></div>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="compare" id="compare"></div>
+    <div id="errorDetails"></div>
+  </div>
+
+  <div class="card">
+    <h2>기록</h2>
+    <div class="small">정상적으로 조회된 결과는 조회 순간 자동으로 저장됩니다. (KST 기준 일별 1건 유지)</div>
+    <div style="overflow:auto">
+      <table>
+        <thead>
+          <tr><th>날짜</th><th>조회 시각</th><th>기온</th><th>습도</th><th>풍속</th><th>풍향</th></tr>
+        </thead>
+        <tbody id="history">
+          <tr><td colspan="6">아직 저장된 기록이 없습니다.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>2일차 변화 계산 검증 모듈</h2>
+    <div class="small">서로 다른 Asia/Seoul 실제 날짜 2건을 메모리에서만 비교하여 어제 대비 변화량을 직접 재계산합니다. 운영 기록과 현재 결과 화면은 변경하지 않습니다.</div>
+    <button class="btn-test" onclick="runDifferenceTest()">2일차 변화 직접 재계산 시뮬레이션</button>
+    <div id="testLog" class="test-log" role="status" aria-live="polite" hidden></div>
+  </div>
+
+  <div class="card source">
+    <h2>출처</h2>
+    <div>Open-Meteo Weather API (<span id="sourceUrlDisplay"></span>)</div>
+    <a id="sourceLink" href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo 서비스 바로가기</a>
+    <p class="small">기준 시간대: 대한민국 표준시(KST, Asia/Seoul, UTC+9).</p>
+  </div>
+</div>
+
+<script>
+const API_URL = 'https://api.open-meteo.com/v1/forecast?latitude=37.241053&longitude=131.867131&current=temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m&timezone=Asia%2FSeoul';
+const KEY_HISTORY = 'dokdo_weather_history_v2';
+const KEY_LAST_VALID = 'dokdo_weather_last_valid_v2';
+const REQUEST_TIMEOUT_MS = 8000;
+
+const DIRECTIONS = [
+  '북풍','북북동풍','북동풍','동북동풍',
+  '동풍','동남동풍','남동풍','남남동풍',
+  '남풍','남남서풍','남서풍','서남서풍',
+  '서풍','서북서풍','북서풍','북북서풍'
+];
+
+function isFiniteNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+function isValidCalendarDate(dateText) {
+  if (typeof dateText !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateText)) return false;
+  const [y, m, d] = dateText.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+function isValidDateTime(dateTime) {
+  if (typeof dateTime !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/.test(dateTime)) return false;
+  const [datePart, timePart] = dateTime.split('T');
+  if (!isValidCalendarDate(datePart)) return false;
+  const [hour, minute, second = '0'] = timePart.split(':').map(Number);
+  return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59 && second >= 0 && second <= 59;
+}
+
+function isValidDirection(direction) {
+  return DIRECTIONS.includes(direction) || direction === '확인 불가';
+}
+
+function isValidRecord(record) {
+  return !!record &&
+    isValidCalendarDate(record.date) &&
+    isValidDateTime(record.viewedAt) &&
+    record.viewedAt.slice(0, 10) === record.date &&
+    record.url === API_URL &&
+    isFiniteNumber(record.temperature) &&
+    isFiniteNumber(record.humidity) &&
+    isFiniteNumber(record.wind) &&
+    record.humidity >= 0 && record.humidity <= 100 &&
+    record.wind >= 0 &&
+    isValidDirection(record.direction);
+}
+
+function readStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return { ok: true, value: fallback, present: false };
+    return { ok: true, value: JSON.parse(raw), present: true };
+  } catch (error) {
+    return { ok: false, value: fallback, error };
+  }
+}
+
+function getHistoryState() {
+  const result = readStorage(KEY_HISTORY, []);
+  if (!result.ok) return { ok: false, history: [], error: result.error };
+  if (!Array.isArray(result.value)) {
+    return { ok: false, history: [], error: new Error('저장된 기록 형식이 배열이 아닙니다.') };
+  }
+  const invalidCount = result.value.filter(record => !isValidRecord(record)).length;
+  return {
+    ok: true,
+    history: result.value.filter(isValidRecord).sort((a, b) => a.date.localeCompare(b.date)),
+    invalidCount
+  };
+}
+
+function getLastValidState() {
+  const result = readStorage(KEY_LAST_VALID, null);
+  if (!result.ok) return { ok: false, record: null, error: result.error };
+  if (result.value === null) return { ok: true, record: null, present: false };
+  return isValidRecord(result.value)
+    ? { ok: true, record: result.value, present: true }
+    : { ok: false, record: null, error: new Error('마지막 정상 기록의 형식이 손상되었습니다.') };
+}
+
+function getHistory() {
+  return getHistoryState().history;
+}
+
+function getLastValid() {
+  return getLastValidState().record;
+}
+
+function persistRecord(record, historyList) {
+  let oldHistory = null;
+  let oldLastValid = null;
+  try {
+    oldHistory = localStorage.getItem(KEY_HISTORY);
+    oldLastValid = localStorage.getItem(KEY_LAST_VALID);
+  } catch (error) {
+    return { ok: false, rollbackOk: null, phase: 'read', error };
+  }
+
+  try {
+    localStorage.setItem(KEY_HISTORY, JSON.stringify(historyList));
+    localStorage.setItem(KEY_LAST_VALID, JSON.stringify(record));
+    return { ok: true, rollbackOk: true };
+  } catch (error) {
+    let rollbackOk = true;
+    try {
+      if (oldHistory === null) localStorage.removeItem(KEY_HISTORY);
+      else localStorage.setItem(KEY_HISTORY, oldHistory);
+      if (oldLastValid === null) localStorage.removeItem(KEY_LAST_VALID);
+      else localStorage.setItem(KEY_LAST_VALID, oldLastValid);
+    } catch (rollbackError) {
+      rollbackOk = false;
+    }
+    return { ok: false, rollbackOk, phase: 'write', error };
+  }
+}
+
+function nowKST() {
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  }).format(new Date()).replace(' ', 'T');
+}
+
+function getWindDirectionText(deg) {
+  if (!isFiniteNumber(deg)) return '확인 불가';
+  const normalized = ((deg % 360) + 360) % 360;
+  return DIRECTIONS[Math.round(normalized / 22.5) % 16];
+}
+
+function calculateDiff(prev, curr) {
+  if (!isValidRecord(prev) || !isValidRecord(curr)) {
+    const error = new Error('변화량 계산에 유효하지 않은 기록이 전달되었습니다.');
+    error.code = 'invalid_diff_input';
+    throw error;
+  }
+  const tempDiff = Number((curr.temperature - prev.temperature).toFixed(1));
+  const humidityDiff = Number((curr.humidity - prev.humidity).toFixed(1));
+  const windDiff = Number((curr.wind - prev.wind).toFixed(1));
+  return {
+    tempDiff, humidityDiff, windDiff,
+    tempText: (tempDiff > 0 ? '+' : '') + tempDiff + ' ℃',
+    humidityText: (humidityDiff > 0 ? '+' : '') + humidityDiff + ' %',
+    windText: (windDiff > 0 ? '+' : '') + windDiff + ' m/s'
+  };
+}
+
+function buildRecord(viewedAtStr, recordData) {
+  return {
+    date: viewedAtStr.slice(0, 10),
+    viewedAt: viewedAtStr,
+    url: API_URL,
+    ...recordData
+  };
+}
+
+function buildHistory(existingHistory, record) {
+  const h = existingHistory.filter(x => x.date !== record.date);
+  h.push(record);
+  h.sort((a, b) => a.date.localeCompare(b.date));
+  return h;
+}
+
+function isPreviousCalendarDay(prevDate, currentDate) {
+  if (!isValidCalendarDate(prevDate) || !isValidCalendarDate(currentDate)) return false;
+  const prev = new Date(prevDate + 'T00:00:00Z');
+  const curr = new Date(currentDate + 'T00:00:00Z');
+  return (curr.getTime() - prev.getTime()) === 24 * 60 * 60 * 1000;
+}
+
+function formatStorageError(state, fallbackTitle) {
+  const phase = state.phase === 'read' ? '읽기' : '쓰기';
+  return {
+    code: 'storage_error',
+    title: fallbackTitle || '로컬 기록 저장소 오류',
+    desc: '로컬 기록 저장소 ' + phase + ' 중 오류가 발생했습니다.',
+    action: '브라우저 저장소 설정을 확인한 뒤 다시 시도해주세요.'
+  };
+}
+
+function formatError(error) {
+  if (error && error.name === 'AbortError') return { code: 'timeout', title: '조회 시간 초과', desc: REQUEST_TIMEOUT_MS / 1000 + '초 안에 응답을 받지 못했습니다.', action: '잠시 후 다시 시도해주세요.' };
+  if (error && error.code === 'schema_break') return { code: 'schema_break', title: '응답 데이터 검증 실패', desc: error.message, action: '잠시 후 다시 시도해주세요.' };
+  if (error && error.code === 'json_parse_error') return { code: 'json_parse_error', title: '응답 해석 실패', desc: '성공 응답을 JSON으로 해석하지 못했습니다.', action: '잠시 후 다시 시도해주세요.' };
+  if (error && error.code === 'invalid_diff_input') return { code: 'invalid_diff_input', title: '변화량 계산 오류', desc: error.message, action: '유효한 기록으로 다시 시도해주세요.' };
+  if (error && /^HTTP \d+$/.test(error.message || '')) return { code: 'http_error', title: 'API 응답 오류', desc: error.message + ' 응답을 받았습니다.', action: '잠시 후 다시 시도해주세요.' };
+  return { code: 'network_error', title: '네트워크 오류', desc: error && error.message ? error.message : '알 수 없는 오류가 발생했습니다.', action: '인터넷 연결을 확인하고 다시 시도해주세요.' };
+}
+
+async function fetchWithTimeout(url, timeoutMs) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { cache: 'no-store', signal: controller.signal });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function parseSuccessfulJson(response) {
+  try {
+    return await response.json();
+  } catch (error) {
+    error.code = 'json_parse_error';
+    throw error;
+  }
+}
+
+function validateApiResponse(resData) {
+  if (!resData || typeof resData !== 'object' || Array.isArray(resData)) {
+    const error = new Error('API 최상위 응답이 객체가 아닙니다.');
+    error.code = 'schema_break';
+    throw error;
+  }
+  const current = resData.current;
+  if (!current || typeof current !== 'object' || Array.isArray(current)) {
+    const error = new Error('current 응답이 객체가 아닙니다.');
+    error.code = 'schema_break';
+    throw error;
+  }
+  const required = ['temperature_2m', 'relative_humidity_2m', 'wind_speed_10m', 'wind_direction_10m', 'time'];
+  if (required.some(key => !(key in current))) {
+    const error = new Error('필수 current 필드가 누락되었습니다.');
+    error.code = 'schema_break';
+    throw error;
+  }
+  for (const key of required.filter(k => k !== 'time')) {
+    if (!isFiniteNumber(current[key])) {
+      const error = new Error(key + ' 값이 유효한 숫자가 아닙니다.');
+      error.code = 'schema_break';
+      throw error;
+    }
+  }
+  if (!isValidDateTime(current.time)) {
+    const error = new Error('current.time 값이 실제 유효한 날짜/시각이 아닙니다.');
+    error.code = 'schema_break';
+    throw error;
+  }
+  if (current.relative_humidity_2m < 0 || current.relative_humidity_2m > 100 ||
+      current.wind_speed_10m < 0 ||
+      current.wind_direction_10m < 0 || current.wind_direction_10m > 360) {
+    const error = new Error('기상 값의 허용 범위를 벗어났습니다.');
+    error.code = 'schema_break';
+    throw error;
+  }
+  return current;
+}
+
+function setErrorDetails(errorInfo, retryLabel) {
+  const el = document.getElementById('errorDetails');
+  el.innerHTML =
+    '<div class="error-box" role="alert"><b>' + esc(errorInfo.title) + '</b><br>' +
+    esc(errorInfo.desc) + '<br>' + esc(errorInfo.action) +
+    (retryLabel ? '<button class="btn-retry" onclick="loadWeather()">' + esc(retryLabel) + '</button>' : '') +
+    '</div>';
+}
+
+async function loadWeather() {
+  const b = document.getElementById('loadBtn');
+  const s = document.getElementById('status');
+  b.disabled = true;
+  s.textContent = '독도 현재 날씨를 조회하고 있습니다...';
+
+  try {
+    const response = await fetchWithTimeout(API_URL, REQUEST_TIMEOUT_MS);
+    if (!response.ok) throw new Error('HTTP ' + response.status);
+
+    const data = await parseSuccessfulJson(response);
+    const current = validateApiResponse(data);
+    const viewedAt = nowKST();
+    const sourceTime = current.time.replace('T', ' ') + ' KST';
+    const record = buildRecord(viewedAt, {
+      sourceTime,
+      temperature: current.temperature_2m,
+      humidity: current.relative_humidity_2m,
+      wind: current.wind_speed_10m,
+      direction: getWindDirectionText(current.wind_direction_10m),
+      unit: { temperature: '℃', humidity: '%', wind: 'm/s' }
+    });
+
+    const historyState = getHistoryState();
+    if (!historyState.ok) {
+      render(record, [], {
+        status: 'fresh',
+        saveOk: false,
+        historyReadable: false,
+        storageError: formatStorageError(historyState, '기록 확인 실패')
+      });
+      s.textContent = '날씨 조회는 성공했지만 기존 로컬 기록을 읽지 못해 저장하지 않았습니다.';
+      return;
+    }
+
+    const historyList = buildHistory(historyState.history, record);
+    const persistence = persistRecord(record, historyList);
+
+    if (persistence.ok) {
+      const savedHistoryState = getHistoryState();
+      const finalHistory = savedHistoryState.ok ? savedHistoryState.history : historyState.history;
+      render(record, finalHistory, {
+        status: 'fresh',
+        saveOk: true,
+        historyReadable: savedHistoryState.ok,
+        invalidCount: savedHistoryState.ok ? savedHistoryState.invalidCount : 0,
+        storageError: savedHistoryState.ok ? null : formatStorageError(savedHistoryState, '저장 후 기록 확인 실패')
+      });
+      s.textContent = savedHistoryState.ok
+        ? '정상적으로 독도 날씨 정보를 조회하여 로컬에 저장했습니다.'
+        : '날씨 조회와 저장은 성공했지만 저장 후 기록을 다시 확인하지 못했습니다.';
+    } else {
+      render(record, historyState.history, {
+        status: 'fresh',
+        saveOk: false,
+        historyReadable: true,
+        invalidCount: historyState.invalidCount,
+        storageError: formatStorageError(persistence, persistence.rollbackOk === false ? '로컬 기록 롤백 실패' : '로컬 기록 저장 실패'),
+        rollbackOk: persistence.rollbackOk
+      });
+      s.textContent = persistence.rollbackOk === false
+        ? '날씨 조회는 성공했지만 저장 실패 후 롤백도 확인되지 않았습니다.'
+        : '날씨 조회는 성공했지만 로컬 기록 저장에 실패했습니다.';
+    }
+  } catch (e) {
+    const errorInfo = formatError(e);
+    const historyState = getHistoryState();
+    const lastValidState = getLastValidState();
+    s.textContent = errorInfo.title;
+
+    if (lastValidState.ok && lastValidState.record) {
+      render(lastValidState.record, historyState.ok ? historyState.history : [], {
+        status: 'stale',
+        error: errorInfo,
+        historyReadable: historyState.ok,
+        invalidCount: historyState.ok ? historyState.invalidCount : 0,
+        storageError: historyState.ok ? null : formatStorageError(historyState, '기록 확인 실패')
+      });
+    } else {
+      renderFailure(errorInfo, historyState.ok ? null : formatStorageError(historyState, '기록 확인 실패'));
+    }
+  } finally {
+    b.disabled = false;
+  }
+}
+
+function renderFailure(errorInfo, storageError) {
+  document.getElementById('result').hidden = false;
+  document.getElementById('statusBadge').innerHTML = '<span class="badge badge-stale">상태: 조회 실패</span>';
+  document.getElementById('temperature').textContent = '-';
+  document.getElementById('humidity').textContent = '-';
+  document.getElementById('wind').textContent = '-';
+  document.getElementById('direction').textContent = '-';
+  document.getElementById('meta').textContent = '정상적으로 저장된 이전 데이터가 없어 기상 값을 표시할 수 없습니다.';
+  document.getElementById('compare').textContent = '조회가 성공하면 기상 값과 날짜별 변화량이 표시됩니다.';
+  if (storageError) {
+    document.getElementById('errorDetails').innerHTML = '';
+    setErrorDetails(storageError, '다시 조회');
+  } else {
+    setErrorDetails(errorInfo, '다시 조회');
+  }
+}
+
+function render(r, h, state) {
+  document.getElementById('result').hidden = false;
+  document.getElementById('errorDetails').innerHTML = '';
+
+  const badgeEl = document.getElementById('statusBadge');
+  if (state.status === 'fresh') {
+    badgeEl.innerHTML = '<span class="badge badge-fresh">상태: fresh (정상) | error_code: none</span>';
+  } else {
+    badgeEl.innerHTML = '<span class="badge badge-stale">상태: stale (오래된 데이터)</span>';
+  }
+
+  document.getElementById('temperature').textContent = r.temperature + ' ℃';
+  document.getElementById('humidity').textContent = r.humidity + ' %';
+  document.getElementById('wind').textContent = r.wind + ' m/s';
+  document.getElementById('direction').textContent = r.direction;
+
+  let notices = '';
+  if (state.saveOk === false) {
+    notices += '<div class="notice-box" role="alert">실제 API 조회는 성공했지만 이번 조회 결과를 저장된 기록으로 등록하지 않았습니다.</div>';
+    if (state.rollbackOk === false) {
+      notices += '<div class="error-box" role="alert">저장 실패 후 기존 저장소로 되돌리는 작업도 확인되지 않았습니다.</div>';
+    }
+  }
+  if (state.storageError) {
+    notices += '<div class="error-box" role="alert">' + esc(state.storageError.desc) + '<br>' + esc(state.storageError.action) + '</div>';
+  }
+  if (state.invalidCount > 0) {
+    notices += '<div class="notice-box" role="alert">손상되었거나 유효하지 않은 저장 기록 ' + state.invalidCount + '건을 표시에서 제외했습니다. 저장소 전체가 정상이라고 간주하지 않습니다.</div>';
+  }
+
+  document.getElementById('meta').innerHTML =
+    '원천 요청 URL: <b>' + esc(r.url) + '</b><br>' +
+    '원천 관측 시각: <b>' + esc(r.sourceTime || '이전 저장 데이터') + '</b><br>' +
+    '마지막 정상 조회 시각: <b>' + esc(r.viewedAt.replace('T',' ')) + ' KST</b>' +
+    notices;
+
+  const c = document.getElementById('compare');
+
+  if (state.status === 'fresh' && state.saveOk !== false && state.historyReadable !== false) {
+    const sorted = h.slice().sort((a, b) => a.date.localeCompare(b.date));
+    const currentIndex = sorted.findIndex(x => x.date === r.date);
+    const previous = currentIndex > 0 ? sorted[currentIndex - 1] : null;
+
+    if (previous && isPreviousCalendarDay(previous.date, r.date)) {
+      const diff = calculateDiff(previous, r);
+      c.innerHTML =
+        '<b>어제(' + esc(previous.date) + ') 대비 변화량 (원자료 실시간 계산)</b><br>' +
+        '• 기온: ' + esc(previous.temperature) + ' ℃ → ' + esc(r.temperature) + ' ℃ (' + esc(diff.tempText) + ')<br>' +
+        '• 습도: ' + esc(previous.humidity) + ' % → ' + esc(r.humidity) + ' % (' + esc(diff.humidityText) + ')<br>' +
+        '• 풍속: ' + esc(previous.wind) + ' m/s → ' + esc(r.wind) + ' m/s (' + esc(diff.windText) + ')';
+    } else if (previous) {
+      c.textContent = '직전 기록은 ' + previous.date + '이며 실제 전날 기록이 아니므로 “어제 대비” 변화량을 표시하지 않습니다.';
+    } else {
+      c.textContent = '비교할 실제 전날 기록이 없습니다.';
+    }
+  } else if (state.saveOk === false) {
+    c.textContent = '이번 조회 결과는 저장되지 않았으므로 저장된 기록과의 “어제 대비” 변화량을 표시하지 않습니다.';
+  } else if (state.historyReadable === false) {
+    c.textContent = '로컬 기록을 확인할 수 없어 저장 기록과의 변화량을 계산하지 않습니다.';
+  } else {
+    c.textContent = '비교할 실제 전날 기록이 없습니다.';
+  }
+
+  if (state.error) setErrorDetails(state.error, '다시 조회');
+  renderHistory(state.historyReadable === false ? [] : h, state.historyReadable !== false);
+}
+
+function renderHistory(h, readable = true) {
+  const t = document.getElementById('history');
+  if (!readable) {
+    t.innerHTML = '<tr><td colspan="6">로컬 기록을 읽을 수 없어 기록을 표시할 수 없습니다.</td></tr>';
+    return;
+  }
+  if (!h.length) {
+    t.innerHTML = '<tr><td colspan="6">아직 저장된 기록이 없습니다.</td></tr>';
+    return;
+  }
+  t.innerHTML = h.slice().sort((a,b) => b.date.localeCompare(a.date)).map(r =>
+    '<tr><td>' + esc(r.date) + '</td><td>' + esc(r.viewedAt.replace('T',' ')) + ' KST</td><td>' +
+    esc(r.temperature) + ' ℃</td><td>' + esc(r.humidity) + ' %</td><td>' +
+    esc(r.wind) + ' m/s</td><td>' + esc(r.direction) + '</td></tr>'
+  ).join('');
+}
+
+function snapshotResultDom() {
+  const ids = ['result', 'statusBadge', 'temperature', 'humidity', 'wind', 'direction', 'meta', 'compare', 'errorDetails', 'history'];
+  return ids.map(id => {
+    const el = document.getElementById(id);
+    return id + '|' + el.hidden + '|' + el.innerHTML;
+  }).join('\n');
+}
+
+function runDifferenceTest() {
+  const logEl = document.getElementById('testLog');
+  logEl.hidden = false;
+  const logs = ['[어제 대비 변화량 원자료 재계산 시뮬레이션 시작]\n'];
+
+  const beforeHistoryState = getHistoryState();
+  const beforeLastValidState = getLastValidState();
+  const beforeHistoryRaw = (() => {
+    try { return localStorage.getItem(KEY_HISTORY); } catch (e) { return null; }
+  })();
+  const beforeLastValidRaw = (() => {
+    try { return localStorage.getItem(KEY_LAST_VALID); } catch (e) { return null; }
+  })();
+  const beforeDom = snapshotResultDom();
+
+  const day1Time = '2026-09-15T10:00:00';
+  const day1Data = { sourceTime: '2026-09-15 10:00 KST', temperature: 20.0, humidity: 60.0, wind: 3.0, direction: '동풍', unit: { temperature: '℃', humidity: '%', wind: 'm/s' } };
+  const day2Time = '2026-09-16T10:00:00';
+  const day2Data = { sourceTime: '2026-09-16 10:00 KST', temperature: 23.5, humidity: 52.0, wind: 4.2, direction: '남동풍', unit: { temperature: '℃', humidity: '%', wind: 'm/s' } };
+
+  const day1 = buildRecord(day1Time, day1Data);
+  const day2 = buildRecord(day2Time, day2Data);
+  const history = buildHistory([day1], day2);
+
+  const match1 = isValidRecord(history[0]) && history[0].temperature === 20.0 && history[0].humidity === 60.0;
+  const match2 = isValidRecord(history[1]) && history[1].temperature === 23.5 && history[1].humidity === 52.0;
+  const countMatch = history.length === 2;
+  logs.push('[1] 메모리 내 Asia/Seoul 날짜별 기록 보존: ' + history.length + '건 (목표: 2건) ' + (countMatch ? 'PASSED' : 'FAILED'));
+  logs.push('[2] 원천 URL/시각/값/단위 데이터 일치 검증: ' + (match1 && match2 ? 'PASSED' : 'FAILED'));
+
+  let diffMatch = false;
+  try {
+    const diffCalculated = calculateDiff(history[0], history[1]);
+    diffMatch = diffCalculated.tempDiff === 3.5 && diffCalculated.humidityDiff === -8.0 && diffCalculated.windDiff === 1.2;
+    logs.push('[3] 원자료 기반 변화량 직접 재계산:');
+    logs.push(' - 기온 변화량: ' + diffCalculated.tempDiff + ' ℃ (기대값: +3.5)');
+    logs.push(' - 습도 변화량: ' + diffCalculated.humidityDiff + ' % (기대값: -8.0)');
+    logs.push(' - 풍속 변화량: ' + diffCalculated.windDiff + ' m/s (기대값: +1.2)');
+    logs.push(' - 수식 계산 일치 여부: ' + (diffMatch ? 'PASSED' : 'FAILED'));
+  } catch (e) {
+    logs.push('[3] 변화량 계산 예외: FAILED (' + e.message + ')');
+  }
+
+  const afterHistoryRaw = (() => {
+    try { return localStorage.getItem(KEY_HISTORY); } catch (e) { return null; }
+  })();
+  const afterLastValidRaw = (() => {
+    try { return localStorage.getItem(KEY_LAST_VALID); } catch (e) { return null; }
+  })();
+  const storageReadable = beforeHistoryState.ok && beforeLastValidState.ok;
+  const unchanged = storageReadable && beforeHistoryRaw === afterHistoryRaw && beforeLastValidRaw === afterLastValidRaw;
+  logs.push('[4] 시뮬레이션 전후 운영 localStorage 불변 검증: ' + (unchanged ? 'PASSED' : 'FAILED'));
+
+  const afterDom = snapshotResultDom();
+  const domUnchanged = beforeDom === afterDom;
+  logs.push('[5] 시뮬레이션 전후 운영 결과 DOM 불변 검증: ' + (domUnchanged ? 'PASSED' : 'FAILED'));
+
+  const boundaryTests = [
+    ['연속 날짜', isPreviousCalendarDay('2026-09-15', '2026-09-16')],
+    ['같은 날짜', !isPreviousCalendarDay('2026-09-15', '2026-09-15')],
+    ['이틀 건너뜀', !isPreviousCalendarDay('2026-09-15', '2026-09-17')],
+    ['역순 날짜', !isPreviousCalendarDay('2026-09-16', '2026-09-15')],
+    ['월말 전환', isPreviousCalendarDay('2026-09-30', '2026-10-01')],
+    ['연말 전환', isPreviousCalendarDay('2026-12-31', '2027-01-01')]
+  ];
+  const boundariesOk = boundaryTests.every(([, ok]) => ok);
+  logs.push('[6] 실제 전날 판정 경계 테스트: ' + (boundariesOk ? 'PASSED' : 'FAILED'));
+  boundaryTests.forEach(([name, ok]) => logs.push(' - ' + name + ': ' + (ok ? 'PASSED' : 'FAILED')));
+
+  const allPassed = countMatch && match1 && match2 && diffMatch && unchanged && domUnchanged && boundariesOk;
+  logs.push('\n[통과 기준 종합 결과]');
+  logs.push(allPassed ? '✅ 모든 메모리 기반 검증을 만족합니다.' : '❌ 검증 실패');
+  logEl.textContent = logs.join('\n');
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+const initialHistoryState = getHistoryState();
+renderHistory(initialHistoryState.history, initialHistoryState.ok);
+document.getElementById('sourceUrlDisplay').textContent = API_URL;
+</script>
+</body>
+</html>
